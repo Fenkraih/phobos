@@ -180,7 +180,7 @@ class Material(Representation, SmurfBase):
 
     def __init__(self, name=None, color=None, texture=None, **kwargs):
         if color is None and "diffuseColor" in kwargs:
-            self.color = Color([
+            color = Color([
                 kwargs["diffuseColor"]["r"],
                 kwargs["diffuseColor"]["g"],
                 kwargs["diffuseColor"]["b"],
@@ -274,6 +274,8 @@ class Mesh(Representation):
     _class_variables = ["filename", "scale"]
 
     def __init__(self, filename=None, scale=None, filepath=None, **kwargs):
+        if scale is None:
+            scale = [1.0, 1.0, 1.0]
         self._filename = None
         super().__init__()
         if filepath:
@@ -305,6 +307,15 @@ class Mesh(Representation):
         else:
             self._filename = new_val
 
+    @property
+    def filepath(self):
+        return self._filename
+
+    @property
+    def name(self):
+        name, _ = os.path.splitext(os.path.dirname(self._filename))
+        return name
+
     def scale_geometry(self, x=1, y=1, z=1, overwrite=False):
         if overwrite or self.scale is None:
             self.scale = [x, y, z]
@@ -322,7 +333,6 @@ class Mesh(Representation):
         self.filename = self._filename
         if not check_linkage_later:
             self.check_linkage()
-
 
     def equivalent(self, other):
         return other._filepath == self._filepath or identical(self.load_mesh(), other.load_mesh())
@@ -418,7 +428,7 @@ class Visual(Representation, SmurfBase):
 class Inertia(Representation):
     _class_variables = ['ixx', 'ixy', 'ixz', 'iyy', 'iyz', 'izz']
 
-    def __init__(self, ixx=0.0, ixy=0.0, ixz=0.0, iyy=0.0, iyz=0.0, izz=0.0, **kwargs):
+    def __init__(self, ixx=1e-16, ixy=0.0, ixz=0.0, iyy=1e-16, iyz=0.0, izz=1e-16, **kwargs):
         super().__init__()
         assert type(ixx) != str and ixx is not None
         self.ixx = ixx
@@ -432,6 +442,9 @@ class Inertia(Representation):
         return [[self.ixx, self.ixy, self.ixz],
                 [self.ixy, self.iyy, self.iyz],
                 [self.ixz, self.iyz, self.izz]]
+
+    def to_list(self):
+        return [self.ixx, self.ixy, self.ixz, self.iyy, self.iyz, self.izz]
 
     @staticmethod
     def from_mass_matrix(M):
@@ -665,7 +678,7 @@ class Joint(Representation, SmurfBase):
         assert self.child is not None
         self.joint_type = joint_type if joint_type is not None else (kwargs["type"] if "type" in kwargs else None)
         assert self.joint_type is not None, f"Joint type of {self.name} undefined!"
-        self.axis = axis
+        self.axis = axis if joint_type != "fixed" else None
         if origin is None:
             origin = Pose(xyz=[0, 0, 0], rpy=[0, 0, 0], relative_to=self.parent)
         self._origin = _singular(origin)
@@ -777,6 +790,7 @@ class Interface(Representation, SmurfBase):
     def __init__(self, name=None, origin=None, parent=None, type=None, direction=None, **kwargs):
         SmurfBase.__init__(self, **kwargs)
         self.excludes += ["origin"]
+        self.returns += ["parent"]
         self.name = name
         self.type = type
         self.direction = direction

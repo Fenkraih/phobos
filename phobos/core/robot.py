@@ -17,10 +17,11 @@ from ..io.hyrodyn import Submechanism, Exoskeleton
 from ..io.xmlrobot import XMLRobot
 from ..io.smurfrobot import SMURFRobot
 from ..utils import transform
-from ..utils.misc import read_angle_2_rad, regex_replace, create_dir, edit_name_string, execute_shell_command, duplicate
+from ..utils.misc import read_angle_2_rad, regex_replace, create_dir, edit_name_string, execute_shell_command, \
+    duplicate, color_parser
 from ..utils.transform import create_transformation, inv, get_adjoint
 from ..utils.tree import find_close_ancestor_links
-from ..utils.urdf import read_urdf_filename, transform_object, get_joint_info_dict
+from ..utils.xml import read_urdf_filename, transform_object, get_joint_info_dict
 
 from ..utils.commandline_logging import get_logger
 log = get_logger(__name__)
@@ -65,7 +66,7 @@ class Robot(SMURFRobot):
             }
             for key, value in material.to_yaml().items():
                 if key.endswith("Color"):
-                    model["materials"][material.name][key[:-5]] = [value[x] for x in "rgba" if x in value.keys()]
+                    model["materials"][material.name][key[:-5]] = color_parser(value)
 
         for link in self.links:
             model["links"][link.name] = {
@@ -183,6 +184,14 @@ class Robot(SMURFRobot):
 
         for interface in self.interfaces:
             model["interfaces"][interface.name] = interface.to_yaml()
+            if hasattr(interface, "origin"):
+                location = mathutils.Matrix.Translation(
+                    tuple(interface.origin.xyz) if interface.origin.xyz is not None else (0, 0, 0))
+                rotation = (
+                    mathutils.Euler(tuple(interface.origin.rpy) if interface.origin.rpy is not None else (0, 0, 0),
+                                    'XYZ').to_matrix().to_4x4()
+                )
+                model["interfaces"][interface.name]["origin"] = location @ rotation
 
         model['lights'] = self.annotations.get('lights')
         model['groups'] = self.annotations.get('groups')
@@ -854,7 +863,7 @@ class Robot(SMURFRobot):
                           ros_pkg_name, export_joint_limits, export_submodels=export_submodels, formats=formats,
                           filename=filename, float_fmt_dict=float_fmt_dict)
 
-    def export_pdf(robot, file):
+    def export_pdf(self, outputfile):
         SUBMECH_COLORS = ["cyan", "darkslateblue", "steelblue", "indigo", "darkblue", "royalblue", "lightskyblue",
                           "teal", "blue", "dodgerblue", "paleturquoise", "lightcyan", "mediumslateblue"]
         EXOSKEL_COLORS = ["lawngreen", "green", "darkgreen", "seagreen", "lightseagreen", "mediumspringgreen",
@@ -881,46 +890,46 @@ class Robot(SMURFRobot):
         out += "sep=10;\n"
         out += "nodesep=0.5;\n"
         out += "node [shape=box];\n"
-        for link in robot.get_links_ordered_df():
+        for link in self.get_links_ordered_df():
             out += f"\"{str(link)}\" [label=\"{str(link)}\"];\n"
 
         printed_joints = []
-        if hasattr(robot, "submechanisms") and robot.submechanisms is not None and len(robot.submechanisms) > 0:
-            for i, sm in enumerate(robot.submechanisms):
+        if hasattr(self, "submechanisms") and self.submechanisms is not None and len(self.submechanisms) > 0:
+            for i, sm in enumerate(self.submechanisms):
                 out += f"node [shape=box, color={SUBMECH_COLORS[i]}, fontcolor=black];\n"
                 out += f"\"{str(sm)}\" [label="
                 out += f"\"Submechanism\ntype: {sm.type} "
                 out += f"\\nname: {sm.name} "
                 out += f"\\ncontextual_name: {sm.contextual_name} "
                 out += "\"];\n"
-                for link in robot.get_links_ordered_df():
+                for link in self.get_links_ordered_df():
                     out += f"\"{str(link)}\" [label=\"{str(link)}\"];\n"
                 out += f"node [shape=ellipse, color={SUBMECH_COLORS[i]}, fontcolor=black];\n"
                 for joint in sorted(sm.get_joints()):
-                    joint = robot.get_joint(joint)
+                    joint = self.get_joint(joint)
                     printed_joints.append(str(joint))
                     out += add_joint(joint)
-        if hasattr(robot, "exoskeletons") and robot.exoskeletons is not None and len(robot.exoskeletons) > 0:
-            for i, exo in enumerate(robot.exoskeletons):
+        if hasattr(self, "exoskeletons") and self.exoskeletons is not None and len(self.exoskeletons) > 0:
+            for i, exo in enumerate(self.exoskeletons):
                 out += f"node [shape=septagon, color={EXOSKEL_COLORS[i]}, fontcolor=black];\n"
                 for joint in sorted(exo.get_joints()):
-                    joint = robot.get_joint(joint)
+                    joint = self.get_joint(joint)
                     if joint.is_human:
                         printed_joints.append(str(joint))
                         out += add_joint(joint)
-        if len(printed_joints) < len(robot.joints):
+        if len(printed_joints) < len(self.joints):
             out += f"node [shape=ellipse, color=black, fontcolor=black];\n"
-            for joint in robot.get_joints_ordered_df():
+            for joint in self.get_joints_ordered_df():
                 if str(joint) not in printed_joints:
-                    out += add_joint(robot.get_joint(joint))
+                    out += add_joint(self.get_joint(joint))
 
         out += "}\n"
 
-        with open(file+".gv", "w") as f:
+        with open(outputfile + ".gv", "w") as f:
             f.write(out)
 
         graph = pydot.graph_from_dot_data(out)
-        graph[0].write_pdf(file)
+        graph[0].write_pdf(outputfile)
 
     # getters
     def get_submodel(self, name):

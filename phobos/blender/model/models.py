@@ -27,6 +27,7 @@ import phobos.blender.model.motors as motormodel
 import phobos.blender.model.controllers as controllermodel
 import phobos.blender.model.materials as matmodel
 import phobos.blender.model.poses as poses
+import phobos.blender.model.interfaces as interfmodel
 import phobos.blender.utils.naming as nUtils
 import phobos.blender.utils.selection as sUtils
 import phobos.blender.utils.blender as bUtils
@@ -1300,7 +1301,6 @@ def buildModelFromDictionary(model):
         rootlink.pose.bones[0].custom_shape = ioUtils.getResource(('link', 'root'))
     rootlink.location = (0, 0, 0)
 
-    # TODO make sure this works
     log("Creating sensors...", 'INFO')
     if 'sensors' in model and model['sensors']:
         for sen in model['sensors']:
@@ -1313,7 +1313,6 @@ def buildModelFromDictionary(model):
     else:
         log("  No sensors in model.", 'INFO')
 
-    # TODO make sure this works
     log("Creating motors...", 'INFO')
     if 'motors' in model and model['motors']:
         for mot in model['motors']:
@@ -1327,6 +1326,19 @@ def buildModelFromDictionary(model):
             )
     else:
         log("  No motors in model.", 'INFO')
+
+    # TODO add interfaces here
+    log("Creating interfaces...", 'INFO')
+    if 'interfaces' in model and model['interfaces']:
+        for interf in model['interfaces']:
+            if type(model['interfaces'][interf]['parent']) == str:
+                model['interfaces'][interf]['parent'] = sUtils.getObjectByName(model['interfaces'][interf]["parent"], "link")
+            if "origin" in model["interfaces"][interf]:
+                interfmodel.createInterface(model['interfaces'][interf], model['interfaces'][interf]["parent"], model["interfaces"][interf]["origin"])
+            else:
+                interfmodel.createInterface(model['interfaces'][interf], model['interfaces'][interf]["parent"])
+    else:
+        log("  No interfaces in model.", 'INFO')
 
     # TODO make sure this works
     log("Creating groups...", 'INFO')
